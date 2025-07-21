@@ -2,10 +2,6 @@
 
 A complete React.js web-based audio management application that allows users to upload audio files, visualize waveforms, crop specific segments, and export them as a ZIP file.
 
-## 🚀 Live Demo
-
-**[Try the application here: https://dspveqym.manus.space](https://dspveqym.manus.space)**
-
 ## ✨ Features
 
 ### Core Functionality
