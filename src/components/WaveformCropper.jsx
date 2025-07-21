@@ -48,9 +48,9 @@ const WaveformCropper = ({ song, onSegmentSave }) => {
       // Create WaveSurfer instance
       const wavesurfer = WaveSurfer.create({
         container: waveformRef.current,
-        waveColor: 'hsl(24.6 95% 53.1%)',
-        progressColor: 'hsl(24.6 95% 53.1%)',
-        cursorColor: 'hsl(24.6 95% 53.1%)',
+        waveColor: '#0a0a0a',
+        progressColor: '#fdba74',
+        cursorColor: '#f97316',
         barWidth: 2,
         barRadius: 1,
         responsive: true,
@@ -72,7 +72,7 @@ const WaveformCropper = ({ song, onSegmentSave }) => {
         const region = regions.addRegion({
           start: startTime,
           end: endTime,
-          color: 'hsla(var(--primary), 0.2)',
+          color: 'hsla(20.5, 90.2%, 48.2%, 0.5)',
           drag: true,
           resize: true
         })
