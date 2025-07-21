@@ -17,8 +17,9 @@ const WaveformCropper = ({ song, onSegmentSave }) => {
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentRegion, setCurrentRegion] = useState(null)
   const [segmentName, setSegmentName] = useState('')
-  const [previewMode, setPreviewMode] = useState(false)
+  const [previewMode, setPreviewMode] = useState(true)
   const [error, setError] = useState(null)
+  const [regionInputs, setRegionInputs] = useState({ start: '', end: '' })
 
   // Format time display
   const formatTime = (seconds) => {
@@ -92,11 +93,19 @@ const WaveformCropper = ({ song, onSegmentSave }) => {
 
       // Region events
       regions.on('region-updated', (region) => {
+        setRegionInputs({
+          start: region.start.toFixed(2),
+          end: region.end.toFixed(2),
+        })
         setCurrentRegion(region)
       })
 
       regions.on('region-clicked', (region, e) => {
         e.stopPropagation()
+        setRegionInputs({
+          start: region.start.toFixed(2),
+          end: region.end.toFixed(2),
+        })
         setCurrentRegion(region)
       })
 
@@ -185,6 +194,33 @@ const WaveformCropper = ({ song, onSegmentSave }) => {
     setError(null)
   }, [currentRegion, segmentName, song, onSegmentSave])
 
+  // Handler for input changes
+  const handleRegionInputChange = (e) => {
+    const { name, value } = e.target
+    // Only allow numbers and dot
+    if (!/^(\d+(\.\d*)?)?$/.test(value)) return
+    setRegionInputs((prev) => ({ ...prev, [name]: value }))
+  }
+
+  // Handler for blur or Enter: update region
+  const handleRegionInputCommit = (name) => {
+    if (!currentRegion || !wavesurferRef.current) return
+    const duration = wavesurferRef.current.getDuration()
+    let start = parseFloat(regionInputs.start)
+    let end = parseFloat(regionInputs.end)
+
+    // Clamp and validate
+    if (isNaN(start)) start = currentRegion.start
+    if (isNaN(end)) end = currentRegion.end
+    start = Math.max(0, Math.min(start, duration - 0.01))
+    end = Math.max(start + 0.01, Math.min(end, duration))
+
+    // Prevent invalid region
+    if (end <= start) return
+
+    currentRegion.setOptions({ start, end })
+  }
+
   if (!song) {
     return (
       <div className="text-center py-8">
@@ -214,6 +250,43 @@ const WaveformCropper = ({ song, onSegmentSave }) => {
             className="w-full bg-muted/30 rounded-lg"
             style={{ minHeight: '80px' }}
           />
+
+          <div className="flex items-center gap-3 justify-center mt-2">
+            <div className='w-full'>
+              <Label className="text-muted-foreground">start (seconds):</Label>
+              <Input
+                name="start"
+                value={regionInputs.start}
+                onChange={handleRegionInputChange}
+                onBlur={() => handleRegionInputCommit('start')}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') handleRegionInputCommit('start')
+                }}
+                disabled={!currentRegion}
+                min={0}
+                max={regionInputs.end}
+                step="0.01"
+                type="number"
+              />
+            </div>
+            <div className='w-full'>
+              <Label className="text-muted-foreground">end (seconds):</Label>
+              <Input
+                name="end"
+                value={regionInputs.end}
+                onChange={handleRegionInputChange}
+                onBlur={() => handleRegionInputCommit('end')}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') handleRegionInputCommit('end')
+                }}
+                disabled={!currentRegion}
+                min={regionInputs.start}
+                step="0.01"
+                type="number"
+                className="w-full"
+              />
+            </div>
+          </div>
           
           {/* Waveform Controls */}
           <div className="flex items-center justify-center gap-4 mt-4">
