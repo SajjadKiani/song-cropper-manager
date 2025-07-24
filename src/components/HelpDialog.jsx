@@ -125,7 +125,7 @@ const HelpDialog = () => {
               ))}
             </div>
             <p className="text-sm text-muted-foreground">
-              Maximum file size: 50MB per file
+              Maximum file size: 1GB per file
             </p>
           </div>
         </div>

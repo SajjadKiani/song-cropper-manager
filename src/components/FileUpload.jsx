@@ -12,7 +12,7 @@ const ACCEPTED_AUDIO_TYPES = [
   'audio/m4a'
 ]
 
-const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB
+const MAX_FILE_SIZE = 50 * 1024 * 1024 * 20 // 50MB
 
 const FileUpload = ({ onSongUpload }) => {
   const [isDragOver, setIsDragOver] = useState(false)
@@ -26,7 +26,7 @@ const FileUpload = ({ onSongUpload }) => {
     }
     
     if (file.size > MAX_FILE_SIZE) {
-      return `File size (${(file.size / 1024 / 1024).toFixed(1)}MB) exceeds the maximum limit of 50MB.`
+      return `File size (${(file.size / 1024 / 1024).toFixed(1)}MB) exceeds the maximum limit of 1GB.`
     }
     
     return null
@@ -169,7 +169,7 @@ const FileUpload = ({ onSongUpload }) => {
               or click the button below to browse files
             </p>
             <p className="text-sm text-muted-foreground">
-              Supports MP3, WAV, OGG, AAC, M4A (max 50MB each)
+              Supports MP3, WAV, OGG, AAC, M4A (max 1GB each)
             </p>
           </div>
 
@@ -207,7 +207,7 @@ const FileUpload = ({ onSongUpload }) => {
       {/* File Type Info */}
       <div className="text-sm text-muted-foreground space-y-1">
         <p><strong>Supported formats:</strong> MP3, WAV, OGG, AAC, M4A</p>
-        <p><strong>Maximum file size:</strong> 50MB per file</p>
+        <p><strong>Maximum file size:</strong> 1GB per file</p>
         <p><strong>Multiple files:</strong> You can upload multiple files at once</p>
       </div>
     </div>

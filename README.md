@@ -6,7 +6,7 @@ A complete React.js web-based audio management application that allows users to 
 
 ### Core Functionality
 - **Audio Upload**: Drag-and-drop or browse to upload multiple audio files
-- **File Validation**: Supports MP3, WAV, OGG, AAC, M4A formats (max 50MB each)
+- **File Validation**: Supports MP3, WAV, OGG, AAC, M4A formats (max 1GB each)
 - **Waveform Visualization**: Interactive waveform display using WaveSurfer.js
 - **Audio Cropping**: Select and crop specific segments from audio files
 - **Segment Manageme44nt**: Save, rename, delete, and preview cropped segments
@@ -131,7 +131,7 @@ The built files will be in the `dist/` directory.
 1. **Upload Audio Files**
    - Go to the Upload tab
    - Drag and drop audio files or click "Browse Files"
-   - Supported formats: MP3, WAV, OGG, AAC, M4A (max 50MB each)
+   - Supported formats: MP3, WAV, OGG, AAC, M4A (max 1GB each)
 
 2. **Select a Song**
    - Click on any uploaded song to select it
@@ -183,7 +183,7 @@ The application uses Tailwind CSS for styling, making it easy to customize:
 
 1. **Audio not loading**
    - Check if the file format is supported
-   - Ensure file size is under 50MB
+   - Ensure file size is under 1GB
    - Try refreshing the page
 
 2. **Waveform not displaying**
