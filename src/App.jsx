@@ -41,8 +41,23 @@ function App() {
   }, [])
 
   const handleSegmentRename = useCallback((segmentId, newName) => {
-    setCroppedSegments(prev => 
-      prev.map(seg => seg.id === segmentId ? { ...seg, name: newName } : seg)
+    setCroppedSegments(prev =>
+      prev.map(seg => seg.id === segmentId
+        ? { ...seg, name: newName, metadata: { ...seg.metadata, title: newName } }
+        : seg)
+    )
+  }, [])
+
+  const handleSegmentMetadataUpdate = useCallback((segmentId, metadata) => {
+    setCroppedSegments(prev =>
+      prev.map(seg => seg.id === segmentId
+        ? {
+            ...seg,
+            // Keep the display name in sync with the metadata title
+            name: metadata.title?.trim() ? metadata.title.trim() : seg.name,
+            metadata: { ...seg.metadata, ...metadata }
+          }
+        : seg)
     )
   }, [])
 
@@ -201,10 +216,11 @@ function App() {
                 <CardTitle>Cropped Segments ({croppedSegments.length})</CardTitle>
               </CardHeader>
               <CardContent>
-                <CroppedSegmentsList 
+                <CroppedSegmentsList
                   segments={croppedSegments}
                   onSegmentDelete={handleSegmentDelete}
                   onSegmentRename={handleSegmentRename}
+                  onSegmentMetadataUpdate={handleSegmentMetadataUpdate}
                 />
               </CardContent>
             </Card>

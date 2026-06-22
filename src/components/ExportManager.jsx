@@ -6,6 +6,9 @@ import { Checkbox } from '@/components/ui/checkbox.jsx'
 import { Alert, AlertDescription } from '@/components/ui/alert.jsx'
 import { Progress } from '@/components/ui/progress.jsx'
 import JSZip from 'jszip'
+import { audioBufferToMp3Blob, cropAudioBuffer, generateSafeFilename } from '@/lib/audioUtils'
+
+const MP3_BITRATE = 192
 
 const ExportManager = ({ segments }) => {
   const [selectedSegments, setSelectedSegments] = useState([])
@@ -36,68 +39,6 @@ const ExportManager = ({ segments }) => {
     }
   }
 
-  const cropAudioBuffer = async (audioBuffer, startTime, endTime, sampleRate) => {
-    const startSample = Math.floor(startTime * sampleRate)
-    const endSample = Math.floor(endTime * sampleRate)
-    const length = endSample - startSample
-    
-    const numberOfChannels = audioBuffer.numberOfChannels
-    const croppedBuffer = new AudioContext().createBuffer(numberOfChannels, length, sampleRate)
-    
-    for (let channel = 0; channel < numberOfChannels; channel++) {
-      const channelData = audioBuffer.getChannelData(channel)
-      const croppedChannelData = croppedBuffer.getChannelData(channel)
-      
-      for (let i = 0; i < length; i++) {
-        croppedChannelData[i] = channelData[startSample + i]
-      }
-    }
-    
-    return croppedBuffer
-  }
-
-  const audioBufferToWav = (audioBuffer) => {
-    const numberOfChannels = audioBuffer.numberOfChannels
-    const sampleRate = audioBuffer.sampleRate
-    const length = audioBuffer.length
-    
-    const arrayBuffer = new ArrayBuffer(44 + length * numberOfChannels * 2)
-    const view = new DataView(arrayBuffer)
-    
-    // WAV header
-    const writeString = (offset, string) => {
-      for (let i = 0; i < string.length; i++) {
-        view.setUint8(offset + i, string.charCodeAt(i))
-      }
-    }
-    
-    writeString(0, 'RIFF')
-    view.setUint32(4, 36 + length * numberOfChannels * 2, true)
-    writeString(8, 'WAVE')
-    writeString(12, 'fmt ')
-    view.setUint32(16, 16, true)
-    view.setUint16(20, 1, true)
-    view.setUint16(22, numberOfChannels, true)
-    view.setUint32(24, sampleRate, true)
-    view.setUint32(28, sampleRate * numberOfChannels * 2, true)
-    view.setUint16(32, numberOfChannels * 2, true)
-    view.setUint16(34, 16, true)
-    writeString(36, 'data')
-    view.setUint32(40, length * numberOfChannels * 2, true)
-    
-    // Convert audio data
-    let offset = 44
-    for (let i = 0; i < length; i++) {
-      for (let channel = 0; channel < numberOfChannels; channel++) {
-        const sample = Math.max(-1, Math.min(1, audioBuffer.getChannelData(channel)[i]))
-        view.setInt16(offset, sample * 0x7FFF, true)
-        offset += 2
-      }
-    }
-    
-    return arrayBuffer
-  }
-
   const handleExport = async () => {
     if (selectedSegments.length === 0) {
       setError('Please select at least one segment to export.')
@@ -112,6 +53,7 @@ const ExportManager = ({ segments }) => {
       const zip = new JSZip()
       const audioContext = new AudioContext()
       const segmentsToExport = segments.filter(seg => selectedSegments.includes(seg.id))
+      const usedNames = new Set()
 
       for (let i = 0; i < segmentsToExport.length; i++) {
         const segment = segmentsToExport[i]
@@ -121,25 +63,40 @@ const ExportManager = ({ segments }) => {
           // Fetch the original audio file
           const response = await fetch(segment.originalSong.url)
           const arrayBuffer = await response.arrayBuffer()
-          
+
           // Decode audio data
           const audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
-          
+
           // Crop the audio buffer
-          const croppedBuffer = await cropAudioBuffer(
-            audioBuffer, 
-            segment.startTime, 
-            segment.endTime, 
+          const croppedBuffer = cropAudioBuffer(
+            audioBuffer,
+            segment.startTime,
+            segment.endTime,
             audioBuffer.sampleRate
           )
-          
-          // Convert to WAV
-          const wavArrayBuffer = audioBufferToWav(croppedBuffer)
-          
-          // Add to ZIP with safe filename
-          const safeFilename = segment.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()
-          zip.file(`${safeFilename}.wav`, wavArrayBuffer)
-          
+
+          // Build ID3 metadata (title falls back to the segment name)
+          const metadata = {
+            title: segment.metadata?.title?.trim() || segment.name,
+            artist: segment.metadata?.artist,
+            album: segment.metadata?.album,
+            year: segment.metadata?.year,
+            genre: segment.metadata?.genre,
+          }
+
+          // Encode to MP3 with embedded tags
+          const mp3Blob = audioBufferToMp3Blob(croppedBuffer, metadata, MP3_BITRATE)
+
+          // Add to ZIP with a Unicode-safe, unique filename (preserves Persian)
+          let safeFilename = generateSafeFilename(segment.name)
+          let candidate = safeFilename
+          let counter = 1
+          while (usedNames.has(candidate)) {
+            candidate = `${safeFilename}_${counter++}`
+          }
+          usedNames.add(candidate)
+          zip.file(`${candidate}.mp3`, mp3Blob)
+
         } catch (segmentError) {
           console.error(`Error processing segment ${segment.name}:`, segmentError)
           // Continue with other segments
@@ -218,7 +175,7 @@ const ExportManager = ({ segments }) => {
           className="flex items-center gap-2"
         >
           <Download className="w-4 h-4" />
-          {isExporting ? 'Exporting...' : 'Export ZIP'}
+          {isExporting ? 'Exporting...' : 'Export MP3 ZIP'}
         </Button>
       </div>
 
@@ -267,17 +224,18 @@ const ExportManager = ({ segments }) => {
                 </div>
                 
                 <div className="flex-1 min-w-0">
-                  <h4 className="font-semibold text-foreground truncate">
-                    {segment.name}
+                  <h4 className="font-semibold text-foreground truncate" dir="auto">
+                    {segment.metadata?.title?.trim() || segment.name}
                   </h4>
-                  <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                  <div className="flex flex-wrap items-center gap-x-4 text-sm text-muted-foreground" dir="auto">
+                    {segment.metadata?.artist && <span>{segment.metadata.artist}</span>}
                     <span>From: {segment.originalSong.name}</span>
                     <span>Duration: {formatDuration(segment.duration)}</span>
                   </div>
                 </div>
 
-                <div className="text-sm text-muted-foreground">
-                  {segment.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.wav
+                <div className="text-sm text-muted-foreground truncate max-w-[40%]" dir="auto">
+                  {generateSafeFilename(segment.name)}.mp3
                 </div>
               </div>
             </CardContent>
@@ -287,9 +245,9 @@ const ExportManager = ({ segments }) => {
 
       {/* Export Info */}
       <div className="text-sm text-muted-foreground space-y-1 p-4 bg-muted/30 rounded-lg">
-        <p><strong>Export Format:</strong> WAV files in ZIP archive</p>
-        <p><strong>File Naming:</strong> Segment names will be sanitized for file system compatibility</p>
-        <p><strong>Quality:</strong> Original audio quality preserved</p>
+        <p><strong>Export Format:</strong> MP3 files ({MP3_BITRATE} kbps) in a ZIP archive</p>
+        <p><strong>Metadata:</strong> Title, artist, album, year and genre are embedded as ID3 tags (UTF-16, Persian supported)</p>
+        <p><strong>File Naming:</strong> Persian and other Unicode characters are preserved in file names</p>
         {selectedSegments.length > 0 && (
           <p><strong>Selected Duration:</strong> {formatDuration(
             segments

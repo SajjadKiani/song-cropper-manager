@@ -177,14 +177,22 @@ const WaveformCropper = ({ song, onSegmentSave }) => {
       return
     }
 
+    const trimmedName = segmentName.trim()
     const segment = {
       id: Date.now() + Math.random(),
-      name: segmentName.trim(),
+      name: trimmedName,
       startTime: currentRegion.start,
       endTime: currentRegion.end,
       duration: currentRegion.end - currentRegion.start,
       originalSong: song,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      metadata: {
+        title: trimmedName,
+        artist: '',
+        album: '',
+        year: '',
+        genre: ''
+      }
     }
 
     onSegmentSave(segment)

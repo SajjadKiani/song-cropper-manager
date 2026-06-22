@@ -1,25 +1,38 @@
 import { useState } from 'react'
-import { Play, Pause, Edit2, Trash2, Music, Clock, Check, X } from 'lucide-react'
+import { Play, Pause, Edit2, Trash2, Music, Clock, Check, X, Tags, User, Disc } from 'lucide-react'
 import { Button } from '@/components/ui/button.jsx'
 import { Card, CardContent } from '@/components/ui/card.jsx'
 import { Input } from '@/components/ui/input.jsx'
-import { 
-  AlertDialog, 
-  AlertDialogAction, 
-  AlertDialogCancel, 
-  AlertDialogContent, 
-  AlertDialogDescription, 
-  AlertDialogFooter, 
-  AlertDialogHeader, 
-  AlertDialogTitle, 
-  AlertDialogTrigger 
+import { Label } from '@/components/ui/label.jsx'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger
 } from '@/components/ui/alert-dialog.jsx'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog.jsx'
 
-const CroppedSegmentsList = ({ segments, onSegmentDelete, onSegmentRename }) => {
+const EMPTY_METADATA = { title: '', artist: '', album: '', year: '', genre: '' }
+
+const CroppedSegmentsList = ({ segments, onSegmentDelete, onSegmentRename, onSegmentMetadataUpdate }) => {
   const [playingSegment, setPlayingSegment] = useState(null)
   const [editingSegment, setEditingSegment] = useState(null)
   const [editName, setEditName] = useState('')
   const [audioElements, setAudioElements] = useState({})
+  const [metadataSegmentId, setMetadataSegmentId] = useState(null)
+  const [metaForm, setMetaForm] = useState(EMPTY_METADATA)
 
   const formatDuration = (seconds) => {
     if (!seconds || isNaN(seconds)) return '0:00'
@@ -92,6 +105,31 @@ const CroppedSegmentsList = ({ segments, onSegmentDelete, onSegmentRename }) => 
   const handleEditCancel = () => {
     setEditingSegment(null)
     setEditName('')
+  }
+
+  const handleMetadataOpen = (segment) => {
+    setMetadataSegmentId(segment.id)
+    setMetaForm({
+      ...EMPTY_METADATA,
+      ...(segment.metadata || {}),
+      title: segment.metadata?.title?.trim() || segment.name,
+    })
+  }
+
+  const handleMetadataFieldChange = (field, value) => {
+    setMetaForm(prev => ({ ...prev, [field]: value }))
+  }
+
+  const handleMetadataSave = () => {
+    if (metadataSegmentId == null) return
+    onSegmentMetadataUpdate?.(metadataSegmentId, {
+      title: metaForm.title.trim(),
+      artist: metaForm.artist.trim(),
+      album: metaForm.album.trim(),
+      year: metaForm.year.trim(),
+      genre: metaForm.genre.trim(),
+    })
+    setMetadataSegmentId(null)
   }
 
   const handleDelete = (segmentId) => {
@@ -170,11 +208,27 @@ const CroppedSegmentsList = ({ segments, onSegmentDelete, onSegmentRename }) => 
                     </div>
                   ) : (
                     <>
-                      <h4 className="font-semibold text-foreground truncate">
+                      <h4 className="font-semibold text-foreground truncate" dir="auto">
                         {segment.name}
                       </h4>
+                      {(segment.metadata?.artist || segment.metadata?.album) && (
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-foreground/80 mt-1" dir="auto">
+                          {segment.metadata?.artist && (
+                            <span className="flex items-center gap-1">
+                              <User className="w-3 h-3" />
+                              {segment.metadata.artist}
+                            </span>
+                          )}
+                          {segment.metadata?.album && (
+                            <span className="flex items-center gap-1">
+                              <Disc className="w-3 h-3" />
+                              {segment.metadata.album}
+                            </span>
+                          )}
+                        </div>
+                      )}
                       <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
-                        <span>From: {segment.originalSong.name}</span>
+                        <span dir="auto">From: {segment.originalSong.name}</span>
                         <div className="flex items-center gap-1">
                           <Clock className="w-3 h-3" />
                           {formatDuration(segment.duration)}
@@ -209,8 +263,19 @@ const CroppedSegmentsList = ({ segments, onSegmentDelete, onSegmentRename }) => 
                     size="sm"
                     onClick={() => handleEditStart(segment)}
                     className="h-8 w-8 p-0"
+                    title="Rename"
                   >
                     <Edit2 className="w-4 h-4" />
+                  </Button>
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleMetadataOpen(segment)}
+                    className="h-8 w-8 p-0"
+                    title="Edit metadata"
+                  >
+                    <Tags className="w-4 h-4" />
                   </Button>
 
                   <AlertDialog>
@@ -250,9 +315,90 @@ const CroppedSegmentsList = ({ segments, onSegmentDelete, onSegmentRename }) => 
 
       {/* Summary */}
       <div className="text-sm text-muted-foreground text-center pt-4 border-t border-border">
-        {segments.length} segment{segments.length !== 1 ? 's' : ''} saved • 
+        {segments.length} segment{segments.length !== 1 ? 's' : ''} saved •
         Total duration: {formatDuration(segments.reduce((total, segment) => total + segment.duration, 0))}
       </div>
+
+      {/* Metadata Editor Dialog */}
+      <Dialog open={metadataSegmentId != null} onOpenChange={(open) => !open && setMetadataSegmentId(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Song Metadata</DialogTitle>
+            <DialogDescription>
+              These tags are written into the exported MP3 file. Persian and other
+              non-Latin text is fully supported.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="meta-title">Title</Label>
+              <Input
+                id="meta-title"
+                dir="auto"
+                value={metaForm.title}
+                onChange={(e) => handleMetadataFieldChange('title', e.target.value)}
+                placeholder="عنوان آهنگ / Song title"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="meta-artist">Artist</Label>
+              <Input
+                id="meta-artist"
+                dir="auto"
+                value={metaForm.artist}
+                onChange={(e) => handleMetadataFieldChange('artist', e.target.value)}
+                placeholder="خواننده / Artist"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="meta-album">Album</Label>
+              <Input
+                id="meta-album"
+                dir="auto"
+                value={metaForm.album}
+                onChange={(e) => handleMetadataFieldChange('album', e.target.value)}
+                placeholder="آلبوم / Album"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="meta-year">Year</Label>
+                <Input
+                  id="meta-year"
+                  dir="auto"
+                  value={metaForm.year}
+                  onChange={(e) => handleMetadataFieldChange('year', e.target.value)}
+                  placeholder="1403 / 2024"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="meta-genre">Genre</Label>
+                <Input
+                  id="meta-genre"
+                  dir="auto"
+                  value={metaForm.genre}
+                  onChange={(e) => handleMetadataFieldChange('genre', e.target.value)}
+                  placeholder="سبک / Genre"
+                />
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMetadataSegmentId(null)}>
+              Cancel
+            </Button>
+            <Button onClick={handleMetadataSave}>
+              <Check className="w-4 h-4 mr-2" />
+              Save Metadata
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

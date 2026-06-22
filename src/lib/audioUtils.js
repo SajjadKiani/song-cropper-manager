@@ -1,5 +1,7 @@
 // Audio utility functions for performance optimization
 
+import { Mp3Encoder } from '@breezystack/lamejs'
+
 /**
  * Debounce function to limit the rate of function calls
  */
@@ -168,14 +170,133 @@ export const audioBufferToWav = (audioBuffer) => {
 }
 
 /**
- * Generate safe filename from string
+ * Convert a Float32 PCM channel to Int16 PCM (required by the MP3 encoder)
+ */
+const floatTo16BitPCM = (input) => {
+  const output = new Int16Array(input.length)
+  for (let i = 0; i < input.length; i++) {
+    const s = Math.max(-1, Math.min(1, input[i]))
+    output[i] = s < 0 ? s * 0x8000 : s * 0x7FFF
+  }
+  return output
+}
+
+/**
+ * Encode an AudioBuffer to MP3. Returns an array of Uint8Array chunks.
+ * Supports mono and stereo; extra channels are ignored.
+ */
+export const audioBufferToMp3 = (audioBuffer, bitRate = 192) => {
+  const channels = Math.min(audioBuffer.numberOfChannels, 2)
+  const sampleRate = audioBuffer.sampleRate
+  const encoder = new Mp3Encoder(channels, sampleRate, bitRate)
+
+  const left = floatTo16BitPCM(audioBuffer.getChannelData(0))
+  const right = channels > 1 ? floatTo16BitPCM(audioBuffer.getChannelData(1)) : null
+
+  const blockSize = 1152
+  const mp3Data = []
+
+  for (let i = 0; i < left.length; i += blockSize) {
+    const leftChunk = left.subarray(i, i + blockSize)
+    let mp3buf
+    if (channels > 1) {
+      const rightChunk = right.subarray(i, i + blockSize)
+      mp3buf = encoder.encodeBuffer(leftChunk, rightChunk)
+    } else {
+      mp3buf = encoder.encodeBuffer(leftChunk)
+    }
+    if (mp3buf.length > 0) mp3Data.push(new Uint8Array(mp3buf))
+  }
+
+  const end = encoder.flush()
+  if (end.length > 0) mp3Data.push(new Uint8Array(end))
+
+  return mp3Data
+}
+
+/**
+ * Encode a UTF-16LE byte sequence (with BOM) for an ID3 text frame.
+ * UTF-16 is required so non-Latin scripts (e.g. Persian) survive intact.
+ */
+const encodeUtf16WithBom = (str) => {
+  const bytes = [0xFF, 0xFE] // UTF-16LE byte order mark
+  for (let i = 0; i < str.length; i++) {
+    const code = str.charCodeAt(i)
+    bytes.push(code & 0xFF, (code >> 8) & 0xFF)
+  }
+  return bytes
+}
+
+/**
+ * Build a single ID3v2.3 text frame (encoding byte 0x01 = UTF-16 w/ BOM)
+ */
+const buildTextFrame = (id, text) => {
+  const value = (text ?? '').toString().trim()
+  if (!value) return []
+
+  const data = [0x01, ...encodeUtf16WithBom(value)] // 0x01 = UTF-16 encoding
+  const size = data.length
+  const frame = []
+  for (let i = 0; i < 4; i++) frame.push(id.charCodeAt(i))
+  // Frame size: 32-bit big-endian (ID3v2.3 frame sizes are not synchsafe)
+  frame.push((size >> 24) & 0xFF, (size >> 16) & 0xFF, (size >> 8) & 0xFF, size & 0xFF)
+  frame.push(0x00, 0x00) // flags
+  return frame.concat(data)
+}
+
+/**
+ * Build an ID3v2.3 tag (Uint8Array) from metadata. Returns an empty array
+ * when no metadata is present so nothing is prepended.
+ * metadata: { title, artist, album, year, genre }
+ */
+export const buildId3v2Tag = (metadata = {}) => {
+  const frames = [
+    ...buildTextFrame('TIT2', metadata.title),
+    ...buildTextFrame('TPE1', metadata.artist),
+    ...buildTextFrame('TALB', metadata.album),
+    ...buildTextFrame('TYER', metadata.year),
+    ...buildTextFrame('TCON', metadata.genre),
+  ]
+
+  if (frames.length === 0) return new Uint8Array(0)
+
+  const size = frames.length
+  // Tag size is a synchsafe 28-bit integer (7 bits per byte)
+  const synchsafe = [
+    (size >> 21) & 0x7F,
+    (size >> 14) & 0x7F,
+    (size >> 7) & 0x7F,
+    size & 0x7F,
+  ]
+  const header = [0x49, 0x44, 0x33, 0x03, 0x00, 0x00, ...synchsafe] // "ID3" v2.3, no flags
+  return new Uint8Array([...header, ...frames])
+}
+
+/**
+ * Encode an AudioBuffer to a tagged MP3 Blob.
+ * metadata: { title, artist, album, year, genre }
+ */
+export const audioBufferToMp3Blob = (audioBuffer, metadata = {}, bitRate = 192) => {
+  const tag = buildId3v2Tag(metadata)
+  const mp3Data = audioBufferToMp3(audioBuffer, bitRate)
+  const parts = tag.length > 0 ? [tag, ...mp3Data] : mp3Data
+  return new Blob(parts, { type: 'audio/mpeg' })
+}
+
+/**
+ * Generate safe filename from string. Preserves Unicode letters (e.g. Persian)
+ * and only strips characters that are illegal in file systems.
  */
 export const generateSafeFilename = (name) => {
-  return name
-    .replace(/[^a-z0-9\s-_]/gi, '') // Remove special characters
-    .replace(/\s+/g, '_') // Replace spaces with underscores
-    .toLowerCase()
-    .substring(0, 50) // Limit length
+  const cleaned = (name ?? '')
+    .toString()
+    .replace(/[/\\:*?"<>|]/g, '') // remove filesystem-illegal characters
+    .replace(/[ -]/g, '') // remove control characters
+    .replace(/\s+/g, '_') // collapse whitespace to underscores
+    .replace(/_+/g, '_') // collapse repeated underscores
+    .replace(/^[._]+|[._]+$/g, '') // trim leading/trailing dots/underscores
+    .substring(0, 100) // limit length
+  return cleaned || 'segment'
 }
 
 /**
